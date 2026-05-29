@@ -44,7 +44,8 @@ The most important architectural constraint: **`core/` must remain free of Strea
 │  ├─ safety.py    (Target validation)     │
 │  ├─ storage.py   (SQLite persistence)    │
 │  ├─ logging_config.py (Loguru setup)     │
-│  └─ exporters/   (Report generators)     │
+│  ├─ exporters/   (Report generators)     │
+│  └─ api_security/(Phase 1A: Spec Parser) │
 ├─────────────────────────────────────────┤
 │  config/         (Settings + allowlist)  │
 └─────────────────────────────────────────┘
@@ -98,14 +99,31 @@ secureqa-orchestrator/
 ├── data/                       # Runtime data (gitignored)
 │   └── .gitkeep
 │
-└── tests/                      # pytest test suite
-    ├── __init__.py
-    ├── conftest.py             # Shared fixtures: in-memory DB, sample data, Gemini mocks
-    ├── test_models.py          # Pydantic model tests
-    ├── test_safety.py          # SafetyGuard tests
-    ├── test_storage.py         # SQLite storage tests
-    ├── test_llm_client.py      # GeminiClient (mocked) tests
-    └── test_exporters.py       # Exporter stub tests
+├── tests/                      # pytest test suite
+│   ├── __init__.py
+│   ├── conftest.py             # Shared fixtures: in-memory DB, sample data, Gemini mocks
+│   ├── test_models.py          # Pydantic model tests
+│   ├── test_safety.py          # SafetyGuard tests
+│   ├── test_storage.py         # SQLite storage tests
+│   ├── test_llm_client.py      # GeminiClient (mocked) tests
+│   ├── test_exporters.py       # Exporter stub tests
+│   ├── api_security/           # Phase 1A tests
+│   │   ├── __init__.py
+│   │   ├── test_models.py
+│   │   ├── test_parser_base.py
+│   │   ├── test_openapi_parser.py
+│   │   ├── test_postman_parser.py
+│   │   ├── test_auto_detect.py
+│   │   ├── test_exceptions.py
+│   │   └── test_integration.py
+│   └── fixtures/
+│       └── specs/              # OpenAPI + Postman fixtures
+│           ├── petstore_openapi_3_0.json
+│           ├── petstore_openapi_3_1.yaml
+│           ├── minimal_openapi.json
+│           ├── malformed_openapi.json
+│           ├── postman_collection_v2_1.json
+│           └── postman_minimal.json
 ```
 
 ---
@@ -231,7 +249,42 @@ All inherit from `Exporter` ABC and implement `export(result: ScanResult) -> Any
 - 3 tabs: API Security, UI Security, AI Fuzzing
 - Footer: version, GitHub link, phase indicator
 
-### 4.9 `tabs/*`
+### 4.9 `core/api_security/` — Phase 1A: Spec Ingestion
+
+**Purpose:** Parse OpenAPI 3.0/3.1 and Postman Collection v2.1 into a single normalized `APISpec` model.
+
+**Module: `core/api_security/models.py`**
+
+| Model | Role |
+|-------|------|
+| `HTTPMethod` | Enum: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS |
+| `ParameterLocation` | Enum: path, query, header, cookie |
+| `AuthType` | Enum: none, api_key, bearer, basic, oauth2, unknown |
+| `SpecFormat` | Enum: openapi_3_0, openapi_3_1, postman_2_1 |
+| `SchemaSpec` | Recursive JSON Schema-like descriptor (type, properties, items, raw) |
+| `AuthSpec` | Authentication scheme: type, location, name, scheme, flows |
+| `Parameter` | Single param: name, location, required, schema_spec, example |
+| `Endpoint` | One path+method: parameters, request_body, responses, security, helpers |
+| `APISpec` | Top-level spec: name, version, base_url, auth_schemes, endpoints, warnings |
+| `ParseWarning` | Non-fatal issue: code, message, location |
+
+**Module: `core/api_security/parsers/`**
+
+| Parser | Input | Key Behavior |
+|--------|-------|--------------|
+| `OpenAPIParser` | OpenAPI 3.0 / 3.1 (JSON/YAML) | Internal `$ref` resolution, external `$ref` skipped (SSRF-safe), strict/lenient mode |
+| `PostmanParser` | Postman Collection v2.1 (JSON) | Variable resolution (`{{var}}`), folder recursion, `:param` → `{param}` conversion, auth inheritance |
+| `auto_detect.parse_spec()` | Any supported format | Sniffs format, dispatches to correct parser, accepts dict/str/bytes |
+
+**Module: `core/api_security/exceptions.py`**
+
+| Exception | Purpose |
+|-----------|---------|
+| `SpecParseError` | Parse/validation failure with optional line_number, source, errors list |
+| `UnsupportedSpecError` | Format not recognized by any parser |
+| `UnresolvedRefError` | `$ref` could not be resolved (internal or external) |
+
+### 4.10 `tabs/*`
 
 **Purpose:** Thin UI wrappers. Each exports a `render_*_tab()` function called by `app.py`.
 
@@ -241,7 +294,37 @@ Current state: all three tabs are placeholders displaying "Phase X — Coming So
 
 ## 5. Data Flows
 
-### 5.1 Scan Lifecycle (Future Phases)
+### 5.1 Spec Ingestion Flow (Phase 1A)
+
+```
+User uploads spec file (OpenAPI / Postman)
+        ↓
+auto_detect.parse_spec(content)
+   ├─ detect_format() → sniff OpenAPI vs Postman
+   └─ parser.parse() → normalized APISpec
+        ↓
+OpenAPIParser
+   ├─ Validate version (3.0 / 3.1)
+   ├─ Resolve internal $ref (#/components/...)
+   ├─ Skip external $ref URLs (security)
+   ├─ Parse security schemes → AuthSpec
+   └─ Parse paths → Endpoint[]
+        ↓
+PostmanParser
+   ├─ Resolve collection variables ({{baseUrl}})
+   ├─ Walk nested folders recursively
+   ├─ Convert :param → {param}
+   ├─ Merge collection auth + request auth
+   └─ Extract path/query/header params
+        ↓
+APISpec (normalized model)
+   ├─ endpoints: list[Endpoint]
+   ├─ auth_schemes: dict[str, AuthSpec]
+   ├─ warnings: list[ParseWarning]
+   └─ metadata: source_format, version, etc.
+```
+
+### 5.2 Scan Lifecycle (Future Phases)
 
 ```
 User enters target URL in Streamlit tab
@@ -395,6 +478,7 @@ Tool configurations:
 | Storage | In-memory SQLite + monkeypatch `get_engine` | `in_memory_engine`, `patched_engine` |
 | LLM Client | Mock `google.generativeai` | `mock_genai_model`, `mock_gemini_response` |
 | Exporters | Instantiation + stub output checks | `sample_scan_result` |
+| API Security (Phase 1A) | Parser round-trips, integration smoke tests | Fixture files in `tests/fixtures/specs/` |
 
 **Key testing patterns:**
 - `monkeypatch.setattr("core.storage.get_engine", lambda: in_memory_engine)` — isolates DB tests
@@ -405,10 +489,24 @@ Tool configurations:
 
 ## 9. Extension Points (Future Phases)
 
-### Phase 1: API Security Validator
-- **Module:** `tabs/api_security.py`, `core/api_validator.py` (new)
-- **Features:** OpenAPI spec upload, BOLA/broken auth tests, Newman runner
-- **Prompts:** Add to `prompts/api_security/`
+### Phase 1A: Spec Ingestion (Complete)
+- **Modules:** `core/api_security/models.py`, `parsers/`, `exceptions.py`
+- **Features:** OpenAPI 3.0/3.1 + Postman v2.1 parsers, auto-detect, normalized `APISpec` model
+- **Tests:** 71 tests, 92% coverage
+
+### Phase 1B: Test Generators (Next)
+- **Module:** `core/api_security/test_generators/` (new)
+- **Features:** OWASP API Top 10 test generation per endpoint
+- **Input:** `APISpec` → list of security tests
+
+### Phase 1C: Execution + Classification
+- **Module:** `core/api_security/runner.py`, `classifier.py` (new)
+- **Features:** httpx test runner, hybrid LLM + heuristic classifier
+- **Output:** `Finding[]` → `ScanResult`
+
+### Phase 1D: UI + Exporters
+- **Module:** `tabs/api_security.py` (replace placeholder), `core/exporters/*` (full impl)
+- **Features:** Streamlit spec upload UI, real Markdown/CSV/ClickUp exporters
 
 ### Phase 2: UI Security & Session Agent
 - **Module:** `tabs/ui_security.py`, `core/ui_agent.py` (new)
@@ -461,3 +559,10 @@ Tool configurations:
 - Exporter ABC + 3 stubs (`core/exporters/`)
 - Streamlit app shell with tab layout (`app.py`, `tabs/`)
 - pytest test suite (28 tests, all passing)
+
+### Phase 1A — Spec Ingestion (Complete)
+- Normalized `APISpec` model with `Endpoint`, `Parameter`, `AuthSpec`, `SchemaSpec`
+- OpenAPI 3.0 + 3.1 parser with internal `$ref` resolution and SSRF-safe external ref handling
+- Postman Collection v2.1 parser with variable resolution, folder recursion, auth inheritance
+- `auto_detect.parse_spec()` public entry point — accepts dict/str/bytes, returns `APISpec`
+- 71 tests, 92% coverage on `core/api_security/`
