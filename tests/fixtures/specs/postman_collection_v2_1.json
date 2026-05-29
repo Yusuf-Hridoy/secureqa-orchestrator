@@ -1,0 +1,81 @@
+{
+  "info": {
+    "name": "Petstore Postman Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://petstore.example.com/api/v1"
+    }
+  ],
+  "item": [
+    {
+      "name": "List Pets",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/pets?limit=10",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "pets"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Pet",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/pets/:petId",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "pets",
+            ":petId"
+          ],
+          "variable": [
+            {
+              "key": "petId",
+              "value": "123"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create Pet",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/pets",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "pets"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\":\"Fluffy\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    }
+  ]
+}
