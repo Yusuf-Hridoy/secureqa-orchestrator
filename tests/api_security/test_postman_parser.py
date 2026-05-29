@@ -7,6 +7,7 @@ import pytest
 
 from core.api_security.exceptions import UnsupportedSpecError
 from core.api_security.models import (
+    AuthType,
     HTTPMethod,
     SpecFormat,
 )
@@ -129,3 +130,309 @@ def test_rejects_non_postman_schema():
     bogus = {"info": {"name": "X", "schema": "https://example.com/random"}}
     with pytest.raises(UnsupportedSpecError):
         parser.parse(bogus)
+
+
+
+def test_parse_nested_folder():
+    """Postman collections can have nested folders."""
+    parser = PostmanParser()
+    collection = {
+        "info": {
+            "name": "Nested",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Folder",
+                "item": [
+                    {
+                        "name": "Request",
+                        "request": {
+                            "method": "GET",
+                            "url": {
+                                "raw": "http://localhost/test",
+                                "host": ["localhost"],
+                                "path": ["test"],
+                            },
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    assert spec.endpoint_count() == 1
+    assert spec.endpoints[0].path == "/test"
+
+
+def test_parse_invalid_request_block():
+    """Items with non-dict request blocks should warn and skip."""
+    parser = PostmanParser(lenient=True)
+    collection = {
+        "info": {
+            "name": "Bad",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [{"name": "Bad", "request": "not-a-dict"}],
+    }
+    spec = parser.parse(collection)
+    assert spec.endpoint_count() == 0
+    assert any(w.code == "INVALID_REQUEST" for w in spec.warnings)
+
+
+def test_parse_unknown_http_method():
+    """Unknown HTTP methods should warn and skip."""
+    parser = PostmanParser(lenient=True)
+    collection = {
+        "info": {
+            "name": "Bad",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Bad",
+                "request": {
+                    "method": "INVALID",
+                    "url": {
+                        "raw": "http://localhost/test",
+                        "host": ["localhost"],
+                        "path": ["test"],
+                    },
+                },
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    assert spec.endpoint_count() == 0
+    assert any(w.code == "INVALID_METHOD" for w in spec.warnings)
+
+
+def test_parse_url_as_string():
+    """URL can be a plain string instead of a dict."""
+    parser = PostmanParser()
+    collection = {
+        "info": {
+            "name": "StringURL",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Req",
+                "request": {
+                    "method": "GET",
+                    "url": "http://localhost/test",
+                },
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    assert spec.endpoints[0].path == "/test"
+
+
+def test_parse_header_params():
+    """Headers should be parsed as header parameters."""
+    parser = PostmanParser()
+    collection = {
+        "info": {
+            "name": "Headers",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Req",
+                "request": {
+                    "method": "GET",
+                    "url": {
+                        "raw": "http://localhost/test",
+                        "host": ["localhost"],
+                        "path": ["test"],
+                    },
+                    "header": [
+                        {"key": "X-Custom", "value": "foo", "disabled": False}
+                    ],
+                },
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    ep = spec.endpoints[0]
+    assert any(h.name == "X-Custom" for h in ep.header_parameters())
+
+
+def test_parse_formdata_body():
+    parser = PostmanParser()
+    collection = {
+        "info": {
+            "name": "Form",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Req",
+                "request": {
+                    "method": "POST",
+                    "url": {
+                        "raw": "http://localhost/upload",
+                        "host": ["localhost"],
+                        "path": ["upload"],
+                    },
+                    "body": {"mode": "formdata"},
+                },
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    assert spec.endpoints[0].request_body.content_type == "multipart/form-data"
+
+
+def test_parse_urlencoded_body():
+    parser = PostmanParser()
+    collection = {
+        "info": {
+            "name": "Form",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Req",
+                "request": {
+                    "method": "POST",
+                    "url": {
+                        "raw": "http://localhost/upload",
+                        "host": ["localhost"],
+                        "path": ["upload"],
+                    },
+                    "body": {"mode": "urlencoded"},
+                },
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    assert (
+        spec.endpoints[0].request_body.content_type
+        == "application/x-www-form-urlencoded"
+    )
+
+
+def test_collection_auth_applied():
+    parser = PostmanParser()
+    collection = {
+        "info": {
+            "name": "Auth",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "auth": {"type": "bearer"},
+        "item": [
+            {
+                "name": "Req",
+                "request": {
+                    "method": "GET",
+                    "url": {
+                        "raw": "http://localhost/test",
+                        "host": ["localhost"],
+                        "path": ["test"],
+                    },
+                },
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    assert spec.endpoints[0].security
+    assert spec.auth_schemes["default"].type == AuthType.BEARER
+
+
+def test_base_url_fallback_from_endpoint():
+    parser = PostmanParser()
+    collection = {
+        "info": {
+            "name": "NoVar",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Req",
+                "request": {
+                    "method": "GET",
+                    "url": {
+                        "raw": "https://api.example.com/test",
+                        "host": ["api.example.com"],
+                        "path": ["test"],
+                    },
+                },
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    assert spec.base_url == "https://api.example.com"
+
+
+def test_lenient_missing_item():
+    parser = PostmanParser(lenient=True)
+    collection = {
+        "info": {
+            "name": "X",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        }
+    }
+    spec = parser.parse(collection)
+    assert any(w.code == "MISSING_ITEM" for w in spec.warnings)
+
+
+def test_parse_raw_xml_body():
+    parser = PostmanParser()
+    collection = {
+        "info": {
+            "name": "XML",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Req",
+                "request": {
+                    "method": "POST",
+                    "url": {
+                        "raw": "http://localhost/upload",
+                        "host": ["localhost"],
+                        "path": ["upload"],
+                    },
+                    "body": {
+                        "mode": "raw",
+                        "raw": "<xml/>",
+                        "options": {"raw": {"language": "xml"}},
+                    },
+                },
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    assert spec.endpoints[0].request_body.content_type == "application/xml"
+
+
+def test_parse_raw_text_body():
+    parser = PostmanParser()
+    collection = {
+        "info": {
+            "name": "Text",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Req",
+                "request": {
+                    "method": "POST",
+                    "url": {
+                        "raw": "http://localhost/upload",
+                        "host": ["localhost"],
+                        "path": ["upload"],
+                    },
+                    "body": {
+                        "mode": "raw",
+                        "raw": "hello",
+                        "options": {"raw": {"language": "text"}},
+                    },
+                },
+            }
+        ],
+    }
+    spec = parser.parse(collection)
+    assert spec.endpoints[0].request_body.content_type == "text/plain"

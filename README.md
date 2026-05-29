@@ -5,7 +5,8 @@
 ## Status
 
 ✅ **Phase 0: Shared Foundation — Complete**
-🚀 **Phase 1: API Security Validator — Next**
+✅ **Phase 1A: Spec Ingestion (OpenAPI + Postman) — Complete**
+🚀 **Phase 1B: Test Generators — Next**
 
 ## What is this?
 
@@ -14,7 +15,10 @@ SecureQA Orchestrator is a desktop security testing tool built for QA engineers 
 ## Roadmap
 
 - [x] **Phase 0:** Shared foundation (skeleton, LLM client, safety guard, storage, logging)
-- [ ] **Phase 1:** API Security Validator — OWASP API Top 10 against uploaded OpenAPI specs
+- [x] **Phase 1A:** Spec Ingestion — OpenAPI 3.0/3.1 + Postman v2.1 parsers
+- [ ] **Phase 1B:** Test Generators — OWASP API Top 10 test generation
+- [ ] **Phase 1C:** Execution + Classification — httpx runner + hybrid classifier
+- [ ] **Phase 1D:** UI + Exporters — Streamlit tab + real exporters
 - [ ] **Phase 2:** UI Security & Session Agent — Playwright-based web UI security checks
 - [ ] **Phase 3:** AI Fuzzing & Input Agent — LLM-driven payload generation + classification
 
@@ -57,6 +61,25 @@ SecureQA Orchestrator includes a built-in **production block**. It refuses to sc
 
 Every scan attempt — allowed or blocked — is logged to an audit trail in the local SQLite DB.
 
+## Usage (Phase 1A — Spec Parsing)
+
+```python
+from core.api_security import parse_spec
+
+# Parse from file
+with open("api-spec.json", "rb") as f:
+    spec = parse_spec(f.read())
+
+print(f"{spec.name}: {spec.endpoint_count()} endpoints")
+for endpoint in spec.endpoints:
+    print(f"  {endpoint.method.value} {endpoint.path}")
+```
+
+Supports:
+- OpenAPI 3.0 (JSON / YAML)
+- OpenAPI 3.1 (JSON / YAML)
+- Postman Collection v2.1 (JSON)
+
 ## Development
 
 ```bash
@@ -65,6 +88,9 @@ pytest
 
 # With coverage
 pytest --cov=core --cov-report=term-missing
+
+# API security tests only
+pytest tests/api_security/ --cov=core/api_security --cov-report=term-missing
 
 # Lint
 ruff check .
