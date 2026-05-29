@@ -1,0 +1,30 @@
+{
+  "description": "Target allowlist for SecureQA Orchestrator. Patterns use glob syntax (*).",
+  "version": "1.0",
+  "allowed_patterns": [
+    "*.staging.*",
+    "*.dev.*",
+    "*.test.*",
+    "staging-*",
+    "dev-*",
+    "test-*",
+    "localhost",
+    "localhost:*",
+    "127.0.0.1",
+    "127.0.0.1:*",
+    "::1",
+    "*.local",
+    "*.local:*"
+  ],
+  "blocked_patterns": [
+    "*.prod.*",
+    "*production*",
+    "*.live",
+    "www.*"
+  ],
+  "notes": [
+    "BLOCKED patterns take precedence over ALLOWED patterns.",
+    "Edit this file to add custom allowed staging environments for your team.",
+    "Never add production domains to allowed_patterns."
+  ]
+}

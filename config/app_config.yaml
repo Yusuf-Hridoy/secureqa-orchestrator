@@ -1,0 +1,26 @@
+# SecureQA Orchestrator — App Configuration
+# Runtime app config (UI defaults, feature flags, etc.)
+
+ui:
+  theme: light
+  primary_color: "#2563EB"
+  success_color: "#10B981"
+  warning_color: "#F59E0B"
+  error_color: "#EF4444"
+
+scan_defaults:
+  api:
+    max_endpoints: 100
+    timeout_per_endpoint_seconds: 10
+  ui:
+    headless: true
+    viewport_width: 1280
+    viewport_height: 720
+  fuzzing:
+    default_iterations: 25
+    max_iterations: 100
+
+feature_flags:
+  enable_clickup_export: true
+  enable_github_pr_comment: false
+  enable_auto_classification: false  # Phase 3, default off until validated
