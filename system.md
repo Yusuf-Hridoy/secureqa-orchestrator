@@ -45,7 +45,11 @@ The most important architectural constraint: **`core/` must remain free of Strea
 │  ├─ storage.py   (SQLite persistence)    │
 │  ├─ logging_config.py (Loguru setup)     │
 │  ├─ exporters/   (Report generators)     │
-│  └─ api_security/(Phase 1A: Spec Parser) │
+│  └─ api_security/(Phase 1A+B: Spec +    │
+│      parsers/    (Spec ingestion)        │
+│      test_models.py (SecurityTest model) │
+│      generators/ (8 OWASP generators)    │
+│      registry.py (GeneratorRegistry)     │
 ├─────────────────────────────────────────┤
 │  config/         (Settings + allowlist)  │
 └─────────────────────────────────────────┘
@@ -116,6 +120,21 @@ secureqa-orchestrator/
 │   │   ├── test_auto_detect.py
 │   │   ├── test_exceptions.py
 │   │   └── test_integration.py
+│   │   └── generators/         # Phase 1B tests
+│   │       ├── __init__.py
+│   │       ├── conftest.py
+│   │       ├── test_base.py
+│   │       ├── test_llm_helper.py
+│   │       ├── test_registry.py
+│   │       ├── test_api1_bola.py
+│   │       ├── test_api2_broken_auth.py
+│   │       ├── test_api3_property_auth.py
+│   │       ├── test_api4_resource_consumption.py
+│   │       ├── test_api5_function_auth.py
+│   │       ├── test_api7_ssrf.py
+│   │       ├── test_api8_misconfiguration.py
+│   │       ├── test_api9_inventory.py
+│   │       └── test_integration.py
 │   └── fixtures/
 │       └── specs/              # OpenAPI + Postman fixtures
 │           ├── petstore_openapi_3_0.json
@@ -284,7 +303,45 @@ All inherit from `Exporter` ABC and implement `export(result: ScanResult) -> Any
 | `UnsupportedSpecError` | Format not recognized by any parser |
 | `UnresolvedRefError` | `$ref` could not be resolved (internal or external) |
 
-### 4.10 `tabs/*`
+### 4.10 `core/api_security/` — Phase 1B: Test Generators
+
+**Purpose:** Generate planned security tests (`SecurityTest`) from a parsed `APISpec`. No HTTP calls.
+
+**Module: `core/api_security/test_models.py`**
+
+| Model | Role |
+|-------|------|
+| `OWASPAPICategory` | Enum: API1_BOLA … API10_THIRD_PARTY |
+| `IndicatorType` | Enum: status_code_is, header_missing, body_contains, response_time_gt, etc. |
+| `ExpectedIndicator` | Response-check definition: type, value, target, description, weight |
+| `TestPayload` | Concrete request: method, path, params, headers, body, content_type |
+| `SecurityTest` | Planned test: test_id, category, payload, indicators, severity_hint, confidence_hint, requires_auth_context, requires_two_users |
+
+**Module: `core/api_security/generators/`**
+
+| Generator | Category | Targets |
+|-----------|----------|---------|
+| `BOLAGenerator` | API1 | Path-param endpoints → ID substitution, cross-tenant access |
+| `BrokenAuthGenerator` | API2 | Secured endpoints → missing auth, empty/malformed/expired JWT, alg=none, wrong scheme |
+| `PropertyAuthGenerator` | API3 | POST/PUT/PATCH bodies → mass assignment with 17 sensitive fields |
+| `ResourceConsumptionGenerator` | API4 | Pagination abuse, oversized payloads, 50-deep JSON nesting |
+| `FunctionLevelAuthGenerator` | API5 | Admin-looking paths/tags → unauth + regular-user access probes |
+| `SSRFGenerator` | API7 | URL-like params/body props → internal hosts, metadata endpoints |
+| `MisconfigurationGenerator` | API8 | Missing security headers, verbose error triggers |
+| `InventoryGenerator` | API9 | Hidden path probes, alternative HTTP methods |
+
+**Module: `core/api_security/generators/llm_helper.py`**
+- `LLMPayloadHelper` — optional Gemini-powered creative payloads
+- In-memory cache per `(endpoint signature + category)`
+- Fail-safe: returns `[]` on any LLM error; rule-based fallback always available
+
+**Module: `core/api_security/generators/registry.py`**
+- `GeneratorRegistry` — holds all 8 generators, runs them via `generate_all(spec)`
+- `enabled_categories` filter for selective category scanning
+- `use_llm` flag for hybrid rule-based + LLM-assisted generation
+- Per-generator exception isolation — one crash doesn't kill the scan
+
+### 4.11 `tabs/*`
 
 **Purpose:** Thin UI wrappers. Each exports a `render_*_tab()` function called by `app.py`.
 
@@ -324,7 +381,27 @@ APISpec (normalized model)
    └─ metadata: source_format, version, etc.
 ```
 
-### 5.2 Scan Lifecycle (Future Phases)
+### 5.2 Test Generation Flow (Phase 1B)
+
+```
+User uploads spec file (OpenAPI / Postman)
+        ↓
+auto_detect.parse_spec(content) → APISpec
+        ↓
+GeneratorRegistry.generate_all(spec)
+   ├─ BOLAGenerator          → ID substitution + cross-tenant tests
+   ├─ BrokenAuthGenerator    → missing/malformed/expired JWT tests
+   ├─ PropertyAuthGenerator  → mass assignment injections
+   ├─ ResourceConsumptionGenerator → pagination + nesting abuse
+   ├─ FunctionLevelAuthGenerator   → admin-path probes
+   ├─ SSRFGenerator          → internal URL payloads
+   ├─ MisconfigurationGenerator    → header + verbose error checks
+   └─ InventoryGenerator     → hidden paths + alt methods
+        ↓
+list[SecurityTest] (planned tests, no HTTP calls)
+```
+
+### 5.3 Scan Lifecycle (Future Phases)
 
 ```
 User enters target URL in Streamlit tab
@@ -334,7 +411,9 @@ SafetyGuard.validate_target(url)
    ├─ blocked → show error + audit log
    └─ production + block_production=True → ProductionBlockError
         ↓
-LLM / test engine generates findings
+GeneratorRegistry.generate_all(spec) → list[SecurityTest]
+        ↓
+Phase 1C Execution Engine runs SecurityTests via httpx
    ├─ yields ScanProgress objects (for UI progress bar)
    └─ completes with ScanResult
         ↓
@@ -343,7 +422,7 @@ Save to SQLite (save_scan)
 Export via Markdown / CSV / ClickUp
 ```
 
-### 5.2 Audit Trail
+### 5.4 Audit Trail
 
 Every `validate_target` call logs an `AuditLogEntry`:
 - `target_validated` — passed all checks
@@ -352,7 +431,7 @@ Every `validate_target` call logs an `AuditLogEntry`:
 
 Entries are persisted to `audit_log` table via `log_audit()`.
 
-### 5.3 LLM Call Lifecycle
+### 5.5 LLM Call Lifecycle
 
 ```
 Tab calls GeminiClient.generate_text() or generate_structured()
@@ -479,6 +558,7 @@ Tool configurations:
 | LLM Client | Mock `google.generativeai` | `mock_genai_model`, `mock_gemini_response` |
 | Exporters | Instantiation + stub output checks | `sample_scan_result` |
 | API Security (Phase 1A) | Parser round-trips, integration smoke tests | Fixture files in `tests/fixtures/specs/` |
+| API Security (Phase 1B) | Generator output shape, category correctness, LLM caching | `simple_api_spec`, `admin_endpoint_spec`, `ssrf_candidate_spec` |
 
 **Key testing patterns:**
 - `monkeypatch.setattr("core.storage.get_engine", lambda: in_memory_engine)` — isolates DB tests
@@ -494,12 +574,13 @@ Tool configurations:
 - **Features:** OpenAPI 3.0/3.1 + Postman v2.1 parsers, auto-detect, normalized `APISpec` model
 - **Tests:** 71 tests, 92% coverage
 
-### Phase 1B: Test Generators (Next)
-- **Module:** `core/api_security/test_generators/` (new)
-- **Features:** OWASP API Top 10 test generation per endpoint
-- **Input:** `APISpec` → list of security tests
+### Phase 1B: Test Generators (Complete)
+- **Modules:** `core/api_security/test_models.py`, `generators/`, `registry.py`
+- **Features:** 8 OWASP API Top 10 rule-based generators + optional LLM-assisted payloads
+- **Input:** `APISpec` → `list[SecurityTest]`
+- **Tests:** 67 tests on generators, 92% coverage on `core/api_security/`
 
-### Phase 1C: Execution + Classification
+### Phase 1C: Execution + Classification (Next)
 - **Module:** `core/api_security/runner.py`, `classifier.py` (new)
 - **Features:** httpx test runner, hybrid LLM + heuristic classifier
 - **Output:** `Finding[]` → `ScanResult`
@@ -566,3 +647,11 @@ Tool configurations:
 - Postman Collection v2.1 parser with variable resolution, folder recursion, auth inheritance
 - `auto_detect.parse_spec()` public entry point — accepts dict/str/bytes, returns `APISpec`
 - 71 tests, 92% coverage on `core/api_security/`
+
+### Phase 1B — Test Generators (Complete)
+- `SecurityTest` model: planned test with `TestPayload`, `ExpectedIndicator`, severity/confidence hints
+- 8 rule-based generators: API1 BOLA, API2 Broken Auth, API3 Mass Assignment, API4 Resource Consumption, API5 Function Auth, API7 SSRF, API8 Misconfiguration, API9 Inventory
+- `LLMPayloadHelper` with per-(endpoint+category) caching and fail-safe fallback
+- `GeneratorRegistry` with `generate_all()` and `tests_by_category()`, exception isolation, category filtering
+- Integration tests against Petstore, Postman, and minimal fixtures
+- 67 generator tests + 71 parser tests = 138 total, 92% coverage on `core/api_security/`

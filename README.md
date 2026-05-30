@@ -6,7 +6,8 @@
 
 ✅ **Phase 0: Shared Foundation — Complete**
 ✅ **Phase 1A: Spec Ingestion (OpenAPI + Postman) — Complete**
-🚀 **Phase 1B: Test Generators — Next**
+✅ **Phase 1B: Test Generators (8 OWASP categories) — Complete**
+🚀 **Phase 1C: Execution Engine — Next**
 
 ## What is this?
 
@@ -16,7 +17,7 @@ SecureQA Orchestrator is a desktop security testing tool built for QA engineers 
 
 - [x] **Phase 0:** Shared foundation (skeleton, LLM client, safety guard, storage, logging)
 - [x] **Phase 1A:** Spec Ingestion — OpenAPI 3.0/3.1 + Postman v2.1 parsers
-- [ ] **Phase 1B:** Test Generators — OWASP API Top 10 test generation
+- [x] **Phase 1B:** Test Generators — OWASP API Top 10 test generation
 - [ ] **Phase 1C:** Execution + Classification — httpx runner + hybrid classifier
 - [ ] **Phase 1D:** UI + Exporters — Streamlit tab + real exporters
 - [ ] **Phase 2:** UI Security & Session Agent — Playwright-based web UI security checks
@@ -79,6 +80,27 @@ Supports:
 - OpenAPI 3.0 (JSON / YAML)
 - OpenAPI 3.1 (JSON / YAML)
 - Postman Collection v2.1 (JSON)
+
+## Usage (Phase 1B — Test Generation)
+
+```python
+from core.api_security import parse_spec, GeneratorRegistry
+
+spec = parse_spec(open("api.json", "rb").read())
+
+# Rule-based (fast, deterministic)
+registry = GeneratorRegistry()
+tests = registry.generate_all(spec)
+
+# Hybrid (rules + LLM-creative payloads, slower, smarter)
+registry = GeneratorRegistry(use_llm=True)
+tests = registry.generate_all(spec)
+
+print(f"Generated {len(tests)} security tests across 8 OWASP categories")
+```
+
+Implemented OWASP API categories: **API1, API2, API3, API4, API5 (soft), API7, API8, API9.**
+Skipped intentionally for v1: API6 (business flows), API10 (third-party APIs).
 
 ## Development
 
