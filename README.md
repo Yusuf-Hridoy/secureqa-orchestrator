@@ -7,7 +7,8 @@
 ✅ **Phase 0: Shared Foundation — Complete**
 ✅ **Phase 1A: Spec Ingestion (OpenAPI + Postman) — Complete**
 ✅ **Phase 1B: Test Generators (8 OWASP categories) — Complete**
-🚀 **Phase 1C: Execution Engine — Next**
+✅ **Phase 1C: Execution Engine + Hybrid Classifier — Complete**
+🚀 **Phase 1D: Streamlit UI + Real Exporters — Next**
 
 ## What is this?
 
@@ -18,7 +19,7 @@ SecureQA Orchestrator is a desktop security testing tool built for QA engineers 
 - [x] **Phase 0:** Shared foundation (skeleton, LLM client, safety guard, storage, logging)
 - [x] **Phase 1A:** Spec Ingestion — OpenAPI 3.0/3.1 + Postman v2.1 parsers
 - [x] **Phase 1B:** Test Generators — OWASP API Top 10 test generation
-- [ ] **Phase 1C:** Execution + Classification — httpx runner + hybrid classifier
+- [x] **Phase 1C:** Execution + Classification — httpx runner + hybrid classifier
 - [ ] **Phase 1D:** UI + Exporters — Streamlit tab + real exporters
 - [ ] **Phase 2:** UI Security & Session Agent — Playwright-based web UI security checks
 - [ ] **Phase 3:** AI Fuzzing & Input Agent — LLM-driven payload generation + classification
@@ -101,6 +102,37 @@ print(f"Generated {len(tests)} security tests across 8 OWASP categories")
 
 Implemented OWASP API categories: **API1, API2, API3, API4, API5 (soft), API7, API8, API9.**
 Skipped intentionally for v1: API6 (business flows), API10 (third-party APIs).
+
+## Usage (Phase 1C — Running a Scan Programmatically)
+
+```python
+from core.api_security import (
+    parse_spec, ScanConfig, ScanOrchestrator, AuthContext
+)
+
+# 1. Parse spec
+spec = parse_spec(open("petstore.json", "rb").read())
+
+# 2. Configure
+config = ScanConfig(
+    target_base_url="https://api.staging.petstore.example.com",
+    concurrency=5,
+    use_llm_classification=True,
+    use_llm_explanations=True,
+)
+
+# 3. Provide auth (optional)
+auth = AuthContext(bearer_token="my-staging-token")
+
+# 4. Run
+orchestrator = ScanOrchestrator(config=config, auth_context=auth)
+for progress in orchestrator.run_scan(spec):
+    print(f"[{progress.percent}%] {progress.step}: {progress.message}")
+
+# Final progress event has the findings:
+final = progress
+print(f"Found {len(final.partial_findings)} findings")
+```
 
 ## Development
 

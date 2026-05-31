@@ -1,9 +1,21 @@
 """API Security Validator — Phase 1 of SecureQA Orchestrator.
 
 Public API:
-    from core.api_security import parse_spec, APISpec, GeneratorRegistry
+    from core.api_security import (
+        parse_spec,
+        APISpec,
+        GeneratorRegistry,
+        ScanOrchestrator,
+        ScanConfig,
+        AuthContext,
+    )
 """
 
+from core.api_security.execution import (
+    AuthContext,
+    ScanConfig,
+    ScanOrchestrator,
+)
 from core.api_security.generators import GeneratorRegistry
 from core.api_security.models import APISpec, Endpoint, HTTPMethod
 from core.api_security.parsers.auto_detect import detect_format, parse_spec
@@ -18,4 +30,7 @@ __all__ = [
     "GeneratorRegistry",
     "OWASPAPICategory",
     "SecurityTest",
+    "ScanOrchestrator",
+    "ScanConfig",
+    "AuthContext",
 ]
