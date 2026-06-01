@@ -1,7 +1,11 @@
 """Exceptions for the API Security Validator spec ingestion layer."""
 
 
-class SpecParseError(Exception):
+class APISecurityError(Exception):
+    """Base class for all API security module errors."""
+
+
+class SpecParseError(APISecurityError):
     """Raised when a spec file cannot be parsed or validated.
 
     Attributes:
@@ -36,7 +40,7 @@ class SpecParseError(Exception):
         return " ".join(parts)
 
 
-class UnsupportedSpecError(Exception):
+class UnsupportedSpecError(APISecurityError):
     """Raised when the uploaded file format is not OpenAPI or Postman."""
 
     def __init__(self, message: str, *, detected_format: str | None = None) -> None:

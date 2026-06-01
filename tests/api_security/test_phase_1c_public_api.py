@@ -4,14 +4,7 @@
 def test_public_imports():
     from core.api_security import (
         APISpec,
-        AuthContext,
-        Endpoint,
-        GeneratorRegistry,
-        HTTPMethod,
-        OWASPAPICategory,
-        ScanConfig,
         ScanOrchestrator,
-        SecurityTest,
         parse_spec,
     )
 

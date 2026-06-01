@@ -4,15 +4,29 @@
 
 ## Status
 
-✅ **Phase 0: Shared Foundation — Complete**
-✅ **Phase 1A: Spec Ingestion (OpenAPI + Postman) — Complete**
-✅ **Phase 1B: Test Generators (8 OWASP categories) — Complete**
-✅ **Phase 1C: Execution Engine + Hybrid Classifier — Complete**
-🚀 **Phase 1D: Streamlit UI + Real Exporters — Next**
+✅ **Phase 1 Complete — API Security Validator (v1)**
+🔒 Phase 2: UI Security & Session Agent — Next
+⏳ Phase 3: AI Fuzzing & Input Agent — Planned
 
-## What is this?
+## What's in v1
 
-SecureQA Orchestrator is a desktop security testing tool built for QA engineers who want to add security validation to their existing workflows. It runs locally via Streamlit and integrates with ClickUp for ticket creation.
+- ✅ OpenAPI 3.0 / 3.1 (JSON + YAML) + Postman Collection v2.1 spec ingestion
+- ✅ 8 OWASP API Top 10 generators (API1, API2, API3, API4, API5-soft, API7, API8, API9)
+- ✅ Hybrid classification: rule-based + LLM tie-break (Gemini 2.5 Flash Lite)
+- ✅ AI-generated finding explanations and remediation
+- ✅ Async concurrent execution (configurable)
+- ✅ Streamlit UI: upload, scan, view findings, download reports
+- ✅ Markdown + CSV exporters
+- ✅ Scan history (last 10 scans in sidebar)
+- ✅ Production-block safety guard
+- ✅ Audit log
+
+## What's NOT in v1 (planned for v1.1 / v2)
+
+- ❌ ClickUp/Jira ticket creation (manual copy/paste from Markdown for now)
+- ❌ OWASP API6 (business flows) — too app-specific to automate
+- ❌ OWASP API10 (third-party APIs) — requires upstream knowledge
+- ❌ Authentication flow modeling (OAuth2, multi-step login)
 
 ## Roadmap
 
@@ -20,7 +34,7 @@ SecureQA Orchestrator is a desktop security testing tool built for QA engineers 
 - [x] **Phase 1A:** Spec Ingestion — OpenAPI 3.0/3.1 + Postman v2.1 parsers
 - [x] **Phase 1B:** Test Generators — OWASP API Top 10 test generation
 - [x] **Phase 1C:** Execution + Classification — httpx runner + hybrid classifier
-- [ ] **Phase 1D:** UI + Exporters — Streamlit tab + real exporters
+- [x] **Phase 1D:** UI + Exporters — Streamlit tab + real exporters
 - [ ] **Phase 2:** UI Security & Session Agent — Playwright-based web UI security checks
 - [ ] **Phase 3:** AI Fuzzing & Input Agent — LLM-driven payload generation + classification
 
@@ -133,6 +147,26 @@ for progress in orchestrator.run_scan(spec):
 final = progress
 print(f"Found {len(final.partial_findings)} findings")
 ```
+
+## Quick Start — Running Your First Scan
+
+1. Clone, install, and configure (see Setup above)
+2. (Optional, for testing) start the mock target:
+   ```bash
+   python tools/mock_target.py
+   ```
+3. Launch the app:
+   ```bash
+   streamlit run app.py
+   ```
+4. In the "API Security" tab:
+   - Upload an OpenAPI spec or Postman collection
+   - Enter the target URL (staging or `http://127.0.0.1:8888` for the mock)
+   - (Optional) Provide auth tokens in the "Auth Context" expander
+   - Click "🚀 Run Security Scan"
+5. Review findings, download Markdown or CSV reports
+
+For sample specs to test with, see `tests/fixtures/specs/`.
 
 ## Development
 
